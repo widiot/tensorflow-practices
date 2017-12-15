@@ -1,0 +1,6 @@
+__pycache__/
+bazel-bin
+bazel-genfiles
+bazel-out
+bazel-practices
+bazel-testlogs
