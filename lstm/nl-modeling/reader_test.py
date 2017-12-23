@@ -7,11 +7,11 @@ DATA_PATH = 'simple-examples/data/'
 # 读取原始数据
 train_data, valid_data, test_data, _ = reader.ptb_raw_data(DATA_PATH)
 
+# 将数据组织成batch大小为4，截断长度为5的数据组，要放在开启多线程之前
+batch = reader.ptb_producer(train_data, 4, 5)
+
 with tf.Session() as sess:
     tf.global_variables_initializer().run()
-
-    # 将数据组织成batch大小为4，截断长度为5的数据组，要放在开启多线程之前
-    batch = reader.ptb_producer(train_data, 4, 5)
 
     # 开启多线程
     coord = tf.train.Coordinator()
