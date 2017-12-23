@@ -157,6 +157,14 @@ def main(_):
     test_batch_len = test_data_len // EVAL_BATCH_SIZE
     test_epoch_size = (test_batch_len - 1) // EVAL_NUM_STEP
 
+    # 生成数据队列，必须放在开启多线程之前
+    train_queue = reader.ptb_producer(train_data, train_model.batch_size,
+                                      train_model.num_steps)
+    valid_queue = reader.ptb_producer(valid_data, eval_model.batch_size,
+                                      eval_model.num_steps)
+    test_queue = reader.ptb_producer(test_data, eval_model.batch_size,
+                                     eval_model.num_steps)
+
     # 定义初始化函数
     initializer = tf.random_uniform_initializer(-0.05, 0.05)
 
@@ -169,14 +177,6 @@ def main(_):
     with tf.variable_scope(
             'language_model', reuse=True, initializer=initializer):
         eval_model = PTBModel(False, EVAL_BATCH_SIZE, EVAL_NUM_STEP)
-
-    # 生成数据队列，必须放在开启多线程之前
-    train_queue = reader.ptb_producer(train_data, train_model.batch_size,
-                                      train_model.num_steps)
-    valid_queue = reader.ptb_producer(valid_data, eval_model.batch_size,
-                                      eval_model.num_steps)
-    test_queue = reader.ptb_producer(test_data, eval_model.batch_size,
-                                     eval_model.num_steps)
 
     with tf.Session() as sess:
         tf.global_variables_initializer().run()
