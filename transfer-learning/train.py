@@ -20,8 +20,10 @@ JPEG_DATA_TENSOR_NAME = 'DecodeJpeg/contents:0'  # 图像输入张量对应的�
 
 # 神经网络的训练参数
 LEARNING_RATE = 0.01
-STEPS = 4000
+STEPS = 1000
 BATCH = 100
+CHECKPOINT_EVERY = 100
+NUM_CHECKPOINTS = 5
 
 
 # 从数据文件夹中读取所有的图片列表并按训练、验证、测试分开
@@ -93,9 +95,8 @@ def get_bottleneck_path(image_lists, label_name, index, category):
 # 使用inception-v3处理图片获取特征向量
 def run_bottleneck_on_image(sess, image_data, image_data_tensor,
                             bottleneck_tensor):
-    bottleneck_values = sess.run(bottleneck_tensor, {
-        image_data_tensor: image_data
-    })
+    bottleneck_values = sess.run(bottleneck_tensor,
+                                 {image_data_tensor: image_data})
     bottleneck_values = np.squeeze(bottleneck_values)  # 将四维数组压缩成一维数组
     return bottleneck_values
 
@@ -228,25 +229,54 @@ def main(_):
     with tf.Session() as sess:
         init = tf.global_variables_initializer().run()
 
+        # 模型和摘要的保存目录
+        import time
+        timestamp = str(int(time.time()))
+        out_dir = os.path.abspath(
+            os.path.join(os.path.curdir, 'runs', timestamp))
+        print('\nWriting to {}\n'.format(out_dir))
+        # 损失值和正确率的摘要
+        loss_summary = tf.summary.scalar('loss', cross_entropy_mean)
+        acc_summary = tf.summary.scalar('accuracy', evaluation_step)
+        # 训练摘要
+        train_summary_op = tf.summary.merge([loss_summary, acc_summary])
+        train_summary_dir = os.path.join(out_dir, 'summaries', 'train')
+        train_summary_writer = tf.summary.FileWriter(train_summary_dir,
+                                                     sess.graph)
+        # 开发摘要
+        dev_summary_op = tf.summary.merge([loss_summary, acc_summary])
+        dev_summary_dir = os.path.join(out_dir, 'summaries', 'dev')
+        dev_summary_writer = tf.summary.FileWriter(dev_summary_dir, sess.graph)
+        # 保存检查点
+        checkpoint_dir = os.path.abspath(os.path.join(out_dir, 'checkpoints'))
+        checkpoint_prefix = os.path.join(checkpoint_dir, 'model')
+        if not os.path.exists(checkpoint_dir):
+            os.makedirs(checkpoint_dir)
+            saver = tf.train.Saver(
+                tf.global_variables(), max_to_keep=NUM_CHECKPOINTS)
+
         for i in range(STEPS):
             # 每次获取一个batch的训练数据
             train_bottlenecks, train_ground_truth = get_random_cached_bottlenecks(
                 sess, n_classes, image_lists, BATCH, 'training',
                 jpeg_data_tensor, bottleneck_tensor)
-            sess.run(
-                train_step,
+            _, train_summaries = sess.run(
+                [train_step, train_summary_op],
                 feed_dict={
                     bottleneck_input: train_bottlenecks,
                     ground_truth_input: train_ground_truth
                 })
+
+            # 保存每步的摘要
+            train_summary_writer.add_summary(train_summaries, i)
 
             # 在验证集上测试正确率
             if i % 100 == 0 or i + 1 == STEPS:
                 validation_bottlenecks, validation_ground_truth = get_random_cached_bottlenecks(
                     sess, n_classes, image_lists, BATCH, 'validation',
                     jpeg_data_tensor, bottleneck_tensor)
-                validation_accuracy = sess.run(
-                    evaluation_step,
+                validation_accuracy, dev_summaries = sess.run(
+                    [evaluation_step, dev_summary_op],
                     feed_dict={
                         bottleneck_input: validation_bottlenecks,
                         ground_truth_input: validation_ground_truth
@@ -254,6 +284,12 @@ def main(_):
                 print(
                     'Step %d : Validation accuracy on random sampled %d examples = %.1f%%'
                     % (i, BATCH, validation_accuracy * 100))
+
+            # 每隔checkpoint_every保存一次模型和测试摘要
+            if i % CHECKPOINT_EVERY == 0:
+                dev_summary_writer.add_summary(dev_summaries, i)
+                path = saver.save(sess, checkpoint_prefix, global_step=i)
+                print('Saved model checkpoint to {}\n'.format(path))
 
         # 最后在测试集上测试正确率
         test_bottlenecks, test_ground_truth = get_test_bottlenecks(
