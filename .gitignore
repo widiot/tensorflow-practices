@@ -4,3 +4,4 @@ bazel-genfiles
 bazel-out
 bazel-practices
 bazel-testlogs
+.vscode/

@@ -17,7 +17,7 @@ JPEG_DATA_TENSOR_NAME = 'DecodeJpeg/contents:0'  # 图像输入张量对应的�
 # 输出如下
 # ['data/flower_photos', 'data/flower_photos/tulips', 'data/flower_photos/daisy', 'data/flower_photos/sunflowers', 'data/flower_photos/dandelion', 'data/flower_photos/roses']
 # tulips-0,daisy-1,以此类推
-test_images = './data/flower_photos/tulips/11746080_963537acdc.jpg'
+file_path = './data/flower_photos/tulips/11746080_963537acdc.jpg'
 y_test = [0]
 
 # 读取数据
