@@ -183,50 +183,52 @@ def main(_):
     image_lists = create_image_lists(VALIDATION_PERCENTAGE, TEST_PERCENTAGE)
     n_classes = len(image_lists.keys())
 
-    # 读取训练好的inception-v3模型
-    with gfile.FastGFile(os.path.join(MODEL_DIR, MODEL_FILE), 'rb') as f:
-        graph_def = tf.GraphDef()
-        graph_def.ParseFromString(f.read())
+    with tf.Graph().as_default() as graph:
+        # 读取训练好的inception-v3模型
+        with gfile.FastGFile(os.path.join(MODEL_DIR, MODEL_FILE), 'rb') as f:
+            graph_def = tf.GraphDef()
+            graph_def.ParseFromString(f.read())
+            # 加载inception-v3模型，并返回数据输入张量和瓶颈层输出张量
+            bottleneck_tensor, jpeg_data_tensor = tf.import_graph_def(
+                graph_def,
+                return_elements=[
+                    BOTTLENECK_TENSOR_NAME, JPEG_DATA_TENSOR_NAME
+                ])
 
-    # 加载inception-v3模型，并返回数据输入张量和瓶颈层输出张量
-    bottleneck_tensor, jpeg_data_tensor = tf.import_graph_def(
-        graph_def,
-        return_elements=[BOTTLENECK_TENSOR_NAME, JPEG_DATA_TENSOR_NAME])
+        # 定义新的神经网络输入
+        bottleneck_input = tf.placeholder(
+            tf.float32, [None, BOTTLENECK_TENSOR_SIZE],
+            name='BottleneckInputPlaceholder')
 
-    # 定义新的神经网络输入
-    bottleneck_input = tf.placeholder(
-        tf.float32, [None, BOTTLENECK_TENSOR_SIZE],
-        name='BottleneckInputPlaceholder')
+        # 定义新的标准答案输入
+        ground_truth_input = tf.placeholder(
+            tf.float32, [None, n_classes], name='GroundTruthInput')
 
-    # 定义新的标准答案输入
-    ground_truth_input = tf.placeholder(
-        tf.float32, [None, n_classes], name='GroundTruthInput')
+        # 定义一层全连接层解决新的图片分类问题
+        with tf.name_scope('final_training_ops'):
+            weights = tf.Variable(
+                tf.truncated_normal(
+                    [BOTTLENECK_TENSOR_SIZE, n_classes], stddev=0.1))
+            biases = tf.Variable(tf.zeros([n_classes]))
+            logits = tf.matmul(bottleneck_input, weights) + biases
+            final_tensor = tf.nn.softmax(logits)
 
-    # 定义一层全连接层解决新的图片分类问题
-    with tf.name_scope('final_training_ops'):
-        weights = tf.Variable(
-            tf.truncated_normal(
-                [BOTTLENECK_TENSOR_SIZE, n_classes], stddev=0.1))
-        biases = tf.Variable(tf.zeros([n_classes]))
-        logits = tf.matmul(bottleneck_input, weights) + biases
-        final_tensor = tf.nn.softmax(logits)
+        # 定义交叉熵损失函数
+        cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
+            logits=logits, labels=ground_truth_input)
+        cross_entropy_mean = tf.reduce_mean(cross_entropy)
+        train_step = tf.train.GradientDescentOptimizer(LEARNING_RATE).minimize(
+            cross_entropy_mean)
 
-    # 定义交叉熵损失函数
-    cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
-        logits=logits, labels=ground_truth_input)
-    cross_entropy_mean = tf.reduce_mean(cross_entropy)
-    train_step = tf.train.GradientDescentOptimizer(LEARNING_RATE).minimize(
-        cross_entropy_mean)
-
-    # 计算正确率
-    with tf.name_scope('evaluation'):
-        correct_prediction = tf.equal(
-            tf.argmax(final_tensor, 1), tf.argmax(ground_truth_input, 1))
-        evaluation_step = tf.reduce_mean(
-            tf.cast(correct_prediction, tf.float32))
+        # 计算正确率
+        with tf.name_scope('evaluation'):
+            correct_prediction = tf.equal(
+                tf.argmax(final_tensor, 1), tf.argmax(ground_truth_input, 1))
+            evaluation_step = tf.reduce_mean(
+                tf.cast(correct_prediction, tf.float32))
 
     # 训练过程
-    with tf.Session() as sess:
+    with tf.Session(graph=graph) as sess:
         init = tf.global_variables_initializer().run()
 
         # 模型和摘要的保存目录
@@ -301,6 +303,14 @@ def main(_):
                 ground_truth_input: test_ground_truth
             })
         print('Final test accuracy = %.1f%%' % (test_accuracy * 100))
+
+        # 保存标签
+        output_labels = os.path.join(out_dir, 'labels.txt')
+        with tf.gfile.FastGFile(output_labels, 'w') as f:
+            keys = list(image_lists.keys())
+            for i in range(len(keys)):
+                keys[i] = '%2d -> %s' % (i, keys[i])
+            f.write('\n'.join(keys) + '\n')
 
 
 if __name__ == '__main__':

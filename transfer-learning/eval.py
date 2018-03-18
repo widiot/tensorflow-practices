@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 
 # 模型目录
-CHECKPOINT_DIR = './runs/1521208186/checkpoints'
+CHECKPOINT_DIR = './runs/1521359377/checkpoints'
 INCEPTION_MODEL_FILE = 'model/tensorflow_inception_graph.pb'
 
 # inception-v3模型参数
@@ -10,25 +10,16 @@ BOTTLENECK_TENSOR_NAME = 'pool_3/_reshape:0'  # inception-v3模型中代表瓶�
 JPEG_DATA_TENSOR_NAME = 'DecodeJpeg/contents:0'  # 图像输入张量对应的名称
 
 # 测试数据
-# 每个类别对应的标签根据读取的图像目录顺序确定
-# 在python命令行输入
-# import os
-# [x[0] for x in os.walk('data/flower_photos')]
-# 输出如下
-# ['data/flower_photos', 'data/flower_photos/tulips', 'data/flower_photos/daisy', 'data/flower_photos/sunflowers', 'data/flower_photos/dandelion', 'data/flower_photos/roses']
-# tulips-0,daisy-1,以此类推
 file_path = './data/flower_photos/tulips/11746080_963537acdc.jpg'
-y_test = [0]
+y_test = [4]
 
 # 读取数据
 image_data = tf.gfile.FastGFile(file_path, 'rb').read()
 
 # 评估
 checkpoint_file = tf.train.latest_checkpoint(CHECKPOINT_DIR)
-graph = tf.Graph()
-with graph.as_default():
-    sess = tf.Session()
-    with sess.as_default():
+with tf.Graph().as_default() as graph:
+    with tf.Session().as_default() as sess:
         # 读取训练好的inception-v3模型
         with tf.gfile.FastGFile(INCEPTION_MODEL_FILE, 'rb') as f:
             graph_def = tf.GraphDef()
